@@ -62,14 +62,14 @@ private:
                     ++spin_count;
                 }else if (spin_count<MEDIUM_SPIN){
                     uint32_t backoff = (spin_count - SHORT_SPIN) >> 5;
-                    uint32_t iterations = 1u << backoff? backoff < 8: 8;
+                    uint32_t iterations = 1u << (backoff < 8 ? backoff : 8);
                     for (uint32_t i = 0; i < iterations; ++i) {
                         cpu_relax();
                     }
                     ++spin_count;
                 }else {
                     std::this_thread::yield();
-                    spin_count = SHORT_SPIN-256;
+                    spin_count = SHORT_SPIN;
                 }
             }
             if (!locked_.exchange(true, std::memory_order_acquire))
@@ -81,9 +81,9 @@ private:
         #ifdef SPINLOCK_X86
             ::_mm_pause();
         #elif defined(SPINLOCK_ARM)
-            __asm__ volatile("yield" ::: "memory");
+            asm volatile("yield"::: "memory");
         #else 
-            std::this_thread::yield();
+            asm volatile("" ::: "memory");
         #endif
     }
     alignas(hardware_constructive_interference_size) std::atomic<bool> locked_;
