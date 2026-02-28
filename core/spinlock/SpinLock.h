@@ -24,8 +24,7 @@ namespace industrial{
     constexpr size_t hardware_constructive_interference_size = 64;
 #endif
 
-class alignas(hardware_constructive_interference_size) SpinLock
-{
+class alignas(hardware_constructive_interference_size) SpinLock{
 public:
     SpinLock() : locked_(false) { }
     
@@ -47,6 +46,7 @@ public:
     }
 
     void unlock() noexcept {
+        
         locked_.store(false, std::memory_order_release);
     }
 
