@@ -19,12 +19,12 @@
 namespace industrial{
 
 #ifdef __cpp_lib_hardware_interference_size
-    using std::hardware_constructive_interference_size;
+    using std::hardware_destructive_interference_size;
 #else
-    constexpr size_t hardware_constructive_interference_size = 64;
+    constexpr size_t hardware_destructive_interference_size = 64;
 #endif
 
-class alignas(hardware_constructive_interference_size) SpinLock{
+class alignas(hardware_destructive_interference_size) SpinLock{
 public:
     SpinLock() : locked_(false) { }
     
@@ -86,8 +86,8 @@ private:
             asm volatile("" ::: "memory");
         #endif
     }
-    alignas(hardware_constructive_interference_size) std::atomic<bool> locked_;
-    char padding_[hardware_constructive_interference_size - sizeof(std::atomic<bool>)];
+    alignas(hardware_destructive_interference_size) std::atomic<bool> locked_;
+    char padding_[hardware_destructive_interference_size - sizeof(std::atomic<bool>)];
 };
 
 using LGuard = std::lock_guard<SpinLock>;

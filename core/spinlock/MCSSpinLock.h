@@ -19,14 +19,14 @@
 
 namespace industrial{
 #ifdef __cpp_lib_hardware_interference_size
-using std::hardware_constructive_interference_size;
+using std::hardware_destructive_interference_size;
 #else
-    constexpr size_t hardware_constructive_interference_size = 64;
+    constexpr size_t hardware_destructive_interference_size = 64;
 #endif
 
-struct alignas(hardware_constructive_interference_size) MCSNode{
-    alignas(hardware_constructive_interference_size) std::atomic<uint32_t> locked{true}; 
-    alignas(hardware_constructive_interference_size) std::atomic<MCSNode*> next{nullptr};
+struct alignas(hardware_destructive_interference_size) MCSNode{
+    alignas(hardware_destructive_interference_size) std::atomic<uint32_t> locked{true}; 
+    alignas(hardware_destructive_interference_size) std::atomic<MCSNode*> next{nullptr};
 };
 
 
@@ -76,7 +76,7 @@ private:
             asm volatile("" ::: "memory");
         #endif
     }
-    alignas(hardware_constructive_interference_size) std::atomic<MCSNode*> tail_{nullptr}; 
+    alignas(hardware_destructive_interference_size) std::atomic<MCSNode*> tail_{nullptr}; 
 };
 
 class MCSLockGuard {
