@@ -21,7 +21,11 @@ namespace industrial{
 #ifdef __cpp_lib_hardware_interference_size
     using std::hardware_destructive_interference_size;
 #else
-    constexpr size_t hardware_destructive_interference_size = 64;
+    #if defined(__x86_64__) || defined(_M_X64)
+        constexpr size_t hardware_destructive_interference_size = 128;
+    #else
+        constexpr size_t hardware_destructive_interference_size = 64;
+    #endif
 #endif
 
 class alignas(hardware_destructive_interference_size) SpinLock{
