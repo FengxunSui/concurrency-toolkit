@@ -47,7 +47,7 @@ public:
     node->locked.store(true, std::memory_order_relaxed);
     node->next.store(nullptr, std::memory_order_relaxed);
     MCSNode* prev = tail_.exchange(node, std::memory_order_acq_rel);
-    if (prev != nullptr){
+    if (prev){
       prev->next.store(node, std::memory_order_release);
       while (node->locked.load(std::memory_order_acquire)){
         cpu_relax();
@@ -57,7 +57,7 @@ public:
 
   void unlock(MCSNode* node) noexcept{
     MCSNode* next = node->next.load(std::memory_order_acquire);
-    if (next == nullptr){ 
+    if (!next){ 
       MCSNode* snapshot = node;
       if(tail_.compare_exchange_strong(snapshot, nullptr, std::memory_order_release, std::memory_order_relaxed))
         return;
