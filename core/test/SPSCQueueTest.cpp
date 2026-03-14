@@ -61,7 +61,7 @@ TEST_CASE("SPSCQueue Multi-Threaded", "[spsc][mt][.]") {
             // 简单方案：直接用 try_pop 的风格测试，不测试满队列情况
             // 或者扩大队列避免满
             
-            queue.push(val);  // 如果队列够大，不会丢数据
+            queue.push(std::move(val));  // 如果队列够大，不会丢数据
             return;
         }
     };
@@ -76,7 +76,7 @@ TEST_CASE("SPSCQueue Multi-Threaded", "[spsc][mt][.]") {
         for (int i = 0; i < OPS; ++i) {
             int val = dis(gen);
             // 队列够大时直接 push，不会满
-            queue.push(val);
+            queue.push(std::move(val));
             sum_produced += val;
             produced++;
         }

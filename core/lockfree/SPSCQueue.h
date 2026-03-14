@@ -102,6 +102,14 @@ namespace industrial
       return true;
     }
 
+    bool empty() const{
+      auto writeIndex = writeIndex_.load(std::memory_order_relaxed);
+      if (writeIndex == readIndex_.load(std::memory_order_acquire)){
+        return true;
+      }
+      return false;
+    }
+
     size_t capacity() const { return size_ - 1; }
 
   private:
