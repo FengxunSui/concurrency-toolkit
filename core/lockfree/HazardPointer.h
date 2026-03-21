@@ -8,15 +8,15 @@ struct HazardPointer {
   std::atomic<void *> pointer;
 };
 extern HazardPointer hazard_pointers[max_hazard_pointers];
-class hp_owner {
+class HPOwner {
 private:
   HazardPointer *hp;
 
 public:
-  hp_owner(const hp_owner &) = delete;
-  hp_owner operator=(const hp_owner &) = delete;
+  HPOwner(const HPOwner &) = delete;
+  HPOwner operator=(const HPOwner &) = delete;
 
-  hp_owner() : hp(nullptr) {
+  HPOwner() : hp(nullptr) {
     for (unsigned i = 0; i < max_hazard_pointers; i++) {
       std::thread::id old_id;
       if (hazard_pointers[i].id.compare_exchange_strong(
@@ -29,15 +29,15 @@ public:
       throw std::runtime_error("No hazard pointers available");
     }
   };
-  ~hp_owner() {
+  ~HPOwner() {
     hp->pointer.store(nullptr);
     hp->id.store(std::thread::id());
   };
   std::atomic<void *> &get_pointer() { return hp->pointer; }
 };
 
-inline std::atomic<void *> &get_hazrd_pointer_for_current_thread() {
-  thread_local static hp_owner hazard;
+inline std::atomic<void *> &get_hazard_pointer_for_current_thread() {
+  thread_local static HPOwner hazard;
   return hazard.get_pointer();
 }
 
