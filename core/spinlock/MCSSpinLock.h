@@ -30,10 +30,10 @@ constexpr size_t hardware_destructive_interference_size = 64;
 #endif
 
 struct alignas(hardware_destructive_interference_size) MCSNode {
-  alignas(hardware_destructive_interference_size) std::atomic<uint32_t> locked{
-      true};
-  alignas(hardware_destructive_interference_size) std::atomic<MCSNode *> next{
-      nullptr};
+  std::atomic<bool> locked{false};
+  std::atomic<MCSNode *> next{nullptr};
+  char padding[hardware_destructive_interference_size - sizeof(locked) -
+               sizeof(next)];
 };
 
 class MCSSpinLock {
@@ -45,7 +45,8 @@ public:
   MCSSpinLock(MCSSpinLock &&) = delete;
   MCSSpinLock &operator=(MCSSpinLock &&) = delete;
 
-  void lock(MCSNode *node) noexcept {
+  void lock() noexcept {
+    MCSNode* node = myNode_.get();
     node->locked.store(true, std::memory_order_relaxed);
     node->next.store(nullptr, std::memory_order_relaxed);
     MCSNode *prev = tail_.exchange(node, std::memory_order_acq_rel);
@@ -57,7 +58,8 @@ public:
     }
   }
 
-  void unlock(MCSNode *node) noexcept {
+  void unlock() noexcept {
+    MCSNode* node = myNode_.get(); 
     MCSNode *next = node->next.load(std::memory_order_acquire);
     if (!next) {
       MCSNode *snapshot = node;
@@ -82,31 +84,47 @@ private:
     asm volatile("" ::: "memory");
 #endif
   }
+  class MyNode {
+  public:
+    // 延迟初始化，第一次使用时分配
+    MCSNode *get() {
+      MCSNode *node = ptr_.load(std::memory_order_acquire);
+      if (node == nullptr) {
+        node = new MCSNode(); // 首次使用，堆分配
+        MCSNode *expected = nullptr;
+        if (!ptr_.compare_exchange_strong(expected, node,
+                                          std::memory_order_release,
+                                          std::memory_order_relaxed)) {
+          delete node; // 竞争失败，用别人创建的
+          node = ptr_.load(std::memory_order_acquire);
+        }
+      }
+      return node;
+    }
+
+    ~MyNode() { delete ptr_.load(std::memory_order_relaxed); }
+
+  private:
+    std::atomic<MCSNode *> ptr_{nullptr};
+  };
+
+  // thread_local 存储MyNode（管理MCSNode生命周期）
+  static thread_local MyNode myNode_;
+
   alignas(hardware_destructive_interference_size) std::atomic<MCSNode *> tail_{
       nullptr};
 };
 
+inline thread_local MCSSpinLock::MyNode MCSSpinLock::myNode_;
+
 class MCSLockGuard {
 public:
-  explicit MCSLockGuard(MCSSpinLock &lock)
-      : lock_(lock), node_(std::make_unique<MCSNode>()) {
-    lock_.lock(node_.get());
-  }
-
-  // 或者：栈分配 + 侵入式链表（需要小心）
-
-  ~MCSLockGuard() {
-    if (node_) {
-      lock_.unlock(node_.get());
-    }
-  }
-
-  MCSLockGuard(MCSLockGuard &&) = delete;
-  MCSLockGuard &operator=(MCSLockGuard &&) = delete;
-
+    explicit MCSLockGuard(MCSSpinLock& lock) : lock_(lock) { lock_.lock(); }
+    ~MCSLockGuard() { lock_.unlock(); }
+    MCSLockGuard(const MCSLockGuard&) = delete;
+    MCSLockGuard& operator=(const MCSLockGuard&) = delete;
 private:
-  MCSSpinLock &lock_;
-  std::unique_ptr<MCSNode> node_;
+    MCSSpinLock& lock_;
 };
 
 } // namespace industrial
