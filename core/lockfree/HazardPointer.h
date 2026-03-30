@@ -2,10 +2,24 @@
 #include <atomic>
 #include <thread>
 
+namespace industrial {
+#ifdef __cpp_lib_hardware_interference_size
+using std::hardware_destructive_interference_size;
+#else
+#if defined(__x86_64__) || defined(_M_X64)
+constexpr size_t hardware_destructive_interference_size = 128;
+#else
+constexpr size_t hardware_destructive_interference_size = 64;
+#endif
+#endif
+
 unsigned const max_hazard_pointers = 100;
-struct HazardPointer {
+struct alignas(hardware_destructive_interference_size) HazardPointer {
   std::atomic<std::thread::id> id;
   std::atomic<void *> pointer;
+  char padding[hardware_destructive_interference_size -
+               sizeof(std::atomic<std::thread::id>) -
+               sizeof(std::atomic<void *>)];
 };
 extern HazardPointer hazard_pointers[max_hazard_pointers];
 class HPOwner {
@@ -49,3 +63,4 @@ inline bool outstanding_hazard_pointers_for(void *p) {
   }
   return false;
 }
+} // namespace industrial

@@ -2,7 +2,8 @@
 #include <atomic>
 #include <functional>
 
-template <typename T> void do_delete(void *p) { delete static_cast<T>(p); }
+namespace industrial {
+template <typename T> void do_delete(void *p) { delete static_cast<T *>(p); }
 
 struct DataToReclaim {
   void *data;
@@ -26,7 +27,7 @@ inline void delete_nodes_with_no_hazards() {
   DataToReclaim *current = nodes_to_reclaim.exchange(nullptr);
   while (current) {
     DataToReclaim *const next = current->next;
-    if (outstanding_hazard_pointers_for(next)) {
+    if (outstanding_hazard_pointers_for(current->data)) {
       add_to_reclaim_list(current);
     } else {
       delete current;
@@ -34,3 +35,4 @@ inline void delete_nodes_with_no_hazards() {
     current = next;
   }
 }
+} // namespace industrial
