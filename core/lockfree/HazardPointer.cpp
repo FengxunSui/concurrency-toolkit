@@ -93,21 +93,9 @@ void HazardPointerDomain::scanAndReclaim() {
   }
 }
 
-template <typename T> void HazardPointerDomain::reclaim_later(T *node) {
-  addToRetireList(
-      new RetiredNode(node, [](void *p) { delete static_cast<T *>(p); }));
-}
-
 void HazardPointerDomain::addToRetireList(RetiredNode *node) {
-  RetiredNode *old_head = retired_list_.load();
-  RetiredNode *tail;
-  do {
-    // 找到 to_keep 链表的尾部
-    tail = node;
-    while (tail->next)
-      tail = tail->next;
-    tail->next = old_head;
-  } while (!retired_list_.compare_exchange_weak(old_head, node));
+  node->next = retired_list_.load();
+  while(!retired_list_.compare_exchange_weak(node->next, node));
 }
 
 // Holder 实现

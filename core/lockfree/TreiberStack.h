@@ -38,7 +38,7 @@ public:
       if (current.ptr() != node)
         continue;
 
-      StampedPtr new_head(current->next.ptr(), current.stamp() + 1);
+      StampedPtr new_head(current.ptr()->next.ptr(), current.stamp() + 1);
 
       if (head_.compare_exchange_strong(current, new_head,
                                         std::memory_order_release,
@@ -88,14 +88,6 @@ private:
       StampedPtr()};
   alignas(hardware_destructive_interference_size) std::atomic<size_t> op_count_{
       0};
-  void retireNode(Node *node) {
-
-    if (!domain_.getProtectedPointers().empty()) {
-      domain_.reclaim_later(node);
-    } else {
-      delete node;
-    }
-  }
+  void retireNode(Node *node) { domain_.reclaim_later(node); };
 };
-
 } // namespace industrial

@@ -6,7 +6,6 @@
 #include <thread>
 #include <vector>
 
-
 namespace industrial {
 #ifdef __cpp_lib_hardware_interference_size
 using std::hardware_destructive_interference_size;
@@ -57,8 +56,10 @@ public:
   std::vector<void *> getProtectedPointers() const;
   void scanAndReclaim();
   void setThreshold(size_t threshold) { reclaim_threshold_ = threshold; }
-  template<typename T>
-  void reclaim_later(T*);
+  template <typename T> void reclaim_later(T *node) {
+    addToRetireList(
+        new RetiredNode(node, [](void *p) { delete static_cast<T *>(p); }));
+  }
 
 private:
   struct RetiredNode {
