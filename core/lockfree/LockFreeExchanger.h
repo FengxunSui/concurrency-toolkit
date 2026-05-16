@@ -1,7 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <optional>
-#include <system_error>
+#include <random>
 using namespace std::chrono;
 
 struct LockFreeExchanger {
@@ -9,7 +9,7 @@ public:
   enum class State : int { EMPTY, WAITING, BUSY };
   using enum State;
 
-  std::optional<void *> exchange(void *myItem, milliseconds timeout) {
+  std::optional<void *> exchange(void *my_item, milliseconds timeout) {
     auto deadline = steady_clock::now() + timeout;
     State curr_state;
     StatePtr rt_ptr = slot.load();
@@ -20,7 +20,7 @@ public:
       curr_state = rt_ptr.state();
       switch (curr_state) {
       case EMPTY:
-        my_ptr = StatePtr(myItem, WAITING);
+        my_ptr = StatePtr(my_item, WAITING);
         if (slot.compare_exchange_strong(rt_ptr, my_ptr)) {
           while (steady_clock::now() < deadline) {
             rt_ptr = slot.load();
@@ -38,7 +38,7 @@ public:
         }
         break;
       case WAITING:
-        my_ptr = StatePtr(myItem, BUSY);
+        my_ptr = StatePtr(my_item, BUSY);
         if (slot.compare_exchange_strong(rt_ptr, my_ptr))
           return rt_ptr.ptr();
         break;
@@ -65,4 +65,10 @@ private:
     State state() const { return static_cast<State>(data & STATE_MASK); }
   };
   std::atomic<StatePtr> slot;
+};
+
+struct EliminationVector {
+
+private:
+  static inline milliseconds duration = 50ms;
 };
