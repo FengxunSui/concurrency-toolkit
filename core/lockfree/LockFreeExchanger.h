@@ -2,14 +2,17 @@
 #include <chrono>
 #include <optional>
 #include <random>
+#include <vector>
 using namespace std::chrono;
 
+namespace industrial {
 struct LockFreeExchanger {
 public:
+  LockFreeExchanger() : slot(nullptr) {};
   enum class State : int { EMPTY, WAITING, BUSY };
   using enum State;
 
-  std::optional<void *> exchange(void *my_item, milliseconds timeout) {
+  void * exchange(void *my_item, milliseconds timeout) {
     auto deadline = steady_clock::now() + timeout;
     State curr_state;
     StatePtr rt_ptr = slot.load();
@@ -68,7 +71,17 @@ private:
 };
 
 struct EliminationVector {
+public:
+  explicit EliminationVector(size_t capacity) : exchanger_(capacity) {}
+  void * visit(void *value, size_t range) {
+    std::uniform_int_distribution<size_t> local_dist(0, range - 1);
+    size_t slot = local_dist(gen_);
+    return exchanger_[slot].exchange(value, duration_);
+  }
 
 private:
-  static inline milliseconds duration = 50ms;
+  static inline milliseconds duration_ = 50ms;
+  std::mt19937 gen_;
+  std::vector<LockFreeExchanger> exchanger_;
 };
+}; // namespace industrial
