@@ -54,8 +54,10 @@ private:
 template <typename T> struct EliminationBackoffStack : public TreiberStack<T> {
 public:
   using value_type = T;
+  using enum TryPopStatus;
+  using Node = typename TreiberStack<T>::Node;
   EliminationBackoffStack() : eliminationVector(capacity) {};
-  ~EliminationBackoffStack() = default;
+  ~EliminationBackoffStack() = default; 
 
   void push(const T &data) override {
     while (true) {
@@ -63,8 +65,9 @@ public:
         return;
       } else {
         try {
+          Node *new_node = new Node{data};
           void *other_value = eliminationVector.visit(
-              static_cast<void *>(&data), localPolicy.getRange());
+              static_cast<void *>(new_node), localPolicy.getRange());
           if (other_value == nullptr) {
             localPolicy.recordEliminationSuccess();
             return;
@@ -77,30 +80,46 @@ public:
   }
 
   std::shared_ptr<T> pop() override {
+    int empty_cycles = 0;
+    TryPopResult<T> result;
     std::shared_ptr<T> res;
+    TryPopStatus curr_state;
     while (true) {
-      res = this->try_pop();
-      if (res != nullptr) {
-        localPolicy.recordEliminationSuccess();
-        return res;
-      } else {
+      result = this->try_pop();
+      curr_state = result.status;
+      switch (curr_state) {
+      case kEmpty:
+        if (++empty_cycles > MAX_EMPTY_RETRIES) {
+          return nullptr; // 放弃等待
+        }
+      case kRetry:
         try {
-          void *other_value = eliminationVector.visit(nullptr, localPolicy.getRange());
+          void *other_value =
+              eliminationVector.visit(nullptr, localPolicy.getRange());
           if (other_value != nullptr) {
-            res = std::shared_ptr<T>(static_cast<T *>(other_value));
+            Node *node = static_cast<Node *>(other_value);
+            res = std::make_shared<T>(node->data);
+            delete node;
             return res;
           }
         } catch (const std::exception &e) {
           localPolicy.recordEliminationTimeout();
         }
+        break;
+      case kSuccess:
+        localPolicy.recordEliminationSuccess();
+        return result.value;
+        break;
+      default:
+        break;
       }
     }
   }
 
 private:
+  static inline int MAX_EMPTY_RETRIES = 8;
   static inline size_t capacity = 32;
   EliminationVector eliminationVector;
   static inline thread_local RangePolicy localPolicy{5, capacity};
 };
-
 }; // namespace industrial

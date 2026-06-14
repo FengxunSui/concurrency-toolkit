@@ -4,6 +4,17 @@
 
 namespace industrial {
 
+enum class TryPopStatus {
+  kSuccess, // 成功弹出
+  kEmpty,   // 栈为空
+  kRetry    // 因竞争失败，应重试
+};
+
+template <typename T> struct TryPopResult {
+  TryPopStatus status;
+  std::shared_ptr<T> value; // 仅当 status == kSuccess 时有效
+};
+
 template <typename T> struct TreiberStack {
 public:
   using value_type = T;
@@ -44,7 +55,7 @@ public:
   }
 
   virtual std::shared_ptr<T> pop() {
-    thread_local HazardPointerHolder hp(&domain_);
+    thread_local HazardPointerHolder hp;
     while (true) {
       StampedPtr old_head = head_.load(std::memory_order_acquire);
       Node *node = old_head.ptr();
@@ -74,41 +85,44 @@ public:
       }
     }
   }
-  
-  std::shared_ptr<T> try_pop() {
-    thread_local HazardPointerHolder hp(&domain_);
+
+  TryPopResult<T> try_pop() {
+    HazardPointerHolder hp;
 
     StampedPtr old_head = head_.load(std::memory_order_acquire);
-    Node* node = old_head.ptr();
-    if (!node) return nullptr;
+    Node *node = old_head.ptr();
+    if (!node)
+      return {TryPopStatus::kEmpty, nullptr};
 
-    hp.set(node);   // 保护当前节点
+    hp.set(node); // 保护当前节点
 
     // 重新验证头节点未被其他线程改变
     StampedPtr current = head_.load(std::memory_order_acquire);
     if (current.ptr() != node) {
-        hp.clear();
-        return nullptr;
+      hp.clear();
+      return {TryPopStatus::kRetry, nullptr};
     }
 
     StampedPtr new_head(current.ptr()->next.ptr(), current.stamp() + 1);
     if (head_.compare_exchange_strong(current, new_head,
                                       std::memory_order_release,
                                       std::memory_order_relaxed)) {
-        hp.clear();     // 成功取出，清除保护
-        auto res = std::make_shared<T>(std::move(node->data));
+      hp.clear(); // 成功取出，清除保护
+      TryPopResult<T> res = {TryPopStatus::kSuccess,
+                             std::make_shared<T>(std::move(node->data))};
 
-        // 沿用原有的周期性回收策略
-        if (++op_count_ % 32 == 0) {
-            domain_.scanAndReclaim();
-        }
-        retireNode(node);
-        return res;
+      // 沿用原有的周期性回收策略
+      if (++op_count_ % 32 == 0) {
+        domain_.scanAndReclaim();
+      }
+      retireNode(node);
+      return res;
     }
 
-    hp.clear();        // CAS 失败，清除保护
-    return nullptr;
-}
+    hp.clear(); // CAS 失败，清除保护
+    return {TryPopStatus::kRetry, nullptr};
+  }
+
 protected:
   struct Node;
   struct StampedPtr {

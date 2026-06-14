@@ -7,14 +7,10 @@
 #include <vector>
 
 namespace industrial {
-#ifdef __cpp_lib_hardware_interference_size
-using std::hardware_destructive_interference_size;
-#else
 #if defined(__x86_64__) || defined(_M_X64)
 constexpr size_t hardware_destructive_interference_size = 128;
 #else
 constexpr size_t hardware_destructive_interference_size = 64;
-#endif
 #endif
 
 class HazardPointerDomain;
@@ -52,6 +48,7 @@ public:
   HazardPointerDomain operator=(const HazardPointerDomain &) = delete;
 
   HazardPointerSlot *acquireSlot();
+   HazardPointerSlot *acquireSlotSlowPath();
   void releaseSlot(HazardPointerSlot *slot);
   std::vector<void *> getProtectedPointers() const;
   void scanAndReclaim();
@@ -69,6 +66,14 @@ private:
     RetiredNode(void *p, std::function<void(void *)> func)
         : data(p), deleter(func), next(nullptr) {}
   };
+  // 线程退出时自动归还
+  struct ThreadLocalSlot {
+    HazardPointerSlot *slot = nullptr;
+    ~ThreadLocalSlot() {
+      if (slot)
+        slot->release();
+    }
+  };
   void addToRetireList(RetiredNode *node);
   std::vector<std::unique_ptr<HazardPointerSlot>> slots_;
   std::atomic<size_t> slot_index_{0};
@@ -77,9 +82,13 @@ private:
   std::vector<RetiredNode *> reclaim_buffer_;
 };
 
+HazardPointerDomain &defaultHazardPointerDomain();
+
 class HazardPointerHolder {
 public:
-  explicit HazardPointerHolder(HazardPointerDomain *domain = nullptr);
+  explicit HazardPointerHolder(
+      HazardPointerDomain *domain = &defaultHazardPointerDomain())
+      : domain_(domain), slot_(nullptr) {}
   ~HazardPointerHolder();
   HazardPointerHolder(const HazardPointerHolder &) = delete;
   HazardPointerHolder &operator=(const HazardPointerHolder &) = delete;
@@ -100,13 +109,11 @@ public:
 
 private:
   HazardPointerDomain *domain_;
-  HazardPointerSlot *slot_;
+  HazardPointerSlot *slot_ = nullptr;
 };
 
-HazardPointerDomain &defaultHazardPointerDomain();
-
-inline HazardPointerHolder makeHazardPointer() {
-  return HazardPointerHolder(&defaultHazardPointerDomain());
-}
+// inline HazardPointerHolder makeHazardPointer() {
+//   return HazardPointerHolder(&defaultHazardPointerDomain());
+// }
 
 } // namespace industrial

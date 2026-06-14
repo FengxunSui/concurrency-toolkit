@@ -17,9 +17,9 @@ HazardPointerDomain::~HazardPointerDomain() {
   scanAndReclaim();
 }
 
-HazardPointerSlot *HazardPointerDomain::acquireSlot() {
+HazardPointerSlot *HazardPointerDomain::acquireSlotSlowPath() {
   // 先尝试无锁获取
-  size_t start = slot_index_.fetch_add(1, std::memory_order_relaxed);
+ size_t start = slot_index_.fetch_add(1, std::memory_order_relaxed);
   for (size_t i = 0; i < slots_.size(); ++i) {
     size_t idx = (start + i) % slots_.size();
     if (slots_[idx]->tryAcquire()) {
@@ -27,6 +27,22 @@ HazardPointerSlot *HazardPointerDomain::acquireSlot() {
     }
   }
   return nullptr; // 槽位耗尽
+}
+
+HazardPointerSlot *HazardPointerDomain::acquireSlot() {
+  // 先尝试无锁获取
+  thread_local ThreadLocalSlot tls;
+    if (tls.slot) {
+        // 复用（注意：如果之前 clear() 过，需要重新激活）
+        if (tls.slot->owner.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
+            return tls.slot;
+        }
+        // 否则被回收了，走慢路径
+    }
+
+    // 慢路径：从全局无锁链表拿一个
+    tls.slot = acquireSlotSlowPath();  // 就是上面的遍历+CAS
+    return tls.slot;
 }
 
 void HazardPointerDomain::releaseSlot(HazardPointerSlot *slot) {
@@ -95,16 +111,8 @@ void HazardPointerDomain::scanAndReclaim() {
 
 void HazardPointerDomain::addToRetireList(RetiredNode *node) {
   node->next = retired_list_.load();
-  while(!retired_list_.compare_exchange_weak(node->next, node));
-}
-
-// Holder 实现
-HazardPointerHolder::HazardPointerHolder(HazardPointerDomain *domain)
-    : domain_(domain ? domain : &defaultHazardPointerDomain()),
-      slot_(domain_->acquireSlot()) {
-  if (!slot_) {
-    throw std::runtime_error("No hazard pointer slot available");
-  }
+  while (!retired_list_.compare_exchange_weak(node->next, node))
+    ;
 }
 
 HazardPointerHolder::~HazardPointerHolder() {
@@ -142,15 +150,22 @@ void *HazardPointerHolder::protect(const std::atomic<void *> &src) {
 }
 
 void HazardPointerHolder::set(void *ptr) {
+  if (!slot_) {
+    slot_ = domain_->acquireSlot();
+  }
   slot_->ptr.store(ptr, std::memory_order_release);
   std::atomic_thread_fence(std::memory_order_seq_cst);
 }
 
 void HazardPointerHolder::clear() {
-  slot_->ptr.store(nullptr, std::memory_order_release);
+  if (slot_) {
+    slot_->release();
+    slot_ = nullptr;
+  }
 }
 
 void *HazardPointerHolder::get() const {
+  if (!slot_) return nullptr;
   return slot_->ptr.load(std::memory_order_acquire);
 }
 

@@ -15,6 +15,7 @@ target_link_libraries(core_test PRIVATE
     Threads::Threads     # 测试本身也需要线程
 )
 
+add_sanitizer_flags(core_test)
 # Catch2 测试发现（可选但推荐）
 include(CTest)
 include(Catch)

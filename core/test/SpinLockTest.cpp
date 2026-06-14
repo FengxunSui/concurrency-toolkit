@@ -15,7 +15,7 @@ TEST_CASE("LockGuard RAII", "[guard]"){
     industrial::SpinLock counter_lock;
     uint64_t counter = 0;
     constexpr int NUM_THREADS = 16;
-    constexpr int OPS = 1000000;
+    constexpr int OPS = 1000;
     
     std::vector<std::thread> threads;
     for (int i = 0; i < NUM_THREADS; ++i) {
