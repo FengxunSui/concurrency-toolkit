@@ -142,6 +142,7 @@ void *HazardPointerHolder::protect(const std::atomic<void *> &src) {
   void *ptr;
   do {
     ptr = src.load(std::memory_order_acquire);
+    if (!slot_) slot_ = domain_->acquireSlot();
     slot_->ptr.store(ptr, std::memory_order_release);
     // 内存屏障确保 store 对其他线程可见
     std::atomic_thread_fence(std::memory_order_seq_cst);
